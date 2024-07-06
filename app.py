@@ -18,32 +18,27 @@ class MedicationApp:
         self.master.geometry("800x600")
         self.master.configure(bg='#f0f0f0')
 
-        self.csv_path = resource_path('medicine_dataset.csv')
+        self.csv_path = resource_path('medications.csv')
         self.df = pd.read_csv(self.csv_path)
 
         self.create_widgets()
 
     def create_widgets(self):
-        # Notebook for different tabs
         self.notebook = ttk.Notebook(self.master)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        # Search tab
         self.search_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.search_frame, text="Search")
         self.create_search_tab()
 
-        # Add tab
         self.add_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.add_frame, text="Add Medication")
         self.create_add_tab()
 
-        # View All tab
         self.view_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.view_frame, text="View All")
         self.create_view_tab()
 
-        # Modify tab
         self.modify_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.modify_frame, text="Modify")
         self.create_modify_tab()
@@ -112,17 +107,42 @@ class MedicationApp:
             self.show_result("Please enter a medication name.")
             return
 
-        result = self.df[self.df['Name'].str.lower() == medication_name.lower()]
+        results = self.df[self.df['Name'].str.lower() == medication_name.lower()]
         
-        if result.empty:
+        if results.empty:
             self.show_result(f"No medication found with the name '{medication_name}'.")
         else:
-            self.display_medication_info(result.iloc[0])
+            self.show_medication_choices(results, self.display_medication_info)
+
+    def show_medication_choices(self, results, callback):
+        choice_window = tk.Toplevel(self.master)
+        choice_window.title("Choose Medication")
+        choice_window.geometry("600x400")
+
+        ttk.Label(choice_window, text="Multiple medications found. Please choose one:").pack(pady=10)
+
+        tree = ttk.Treeview(choice_window, columns=list(results.columns), show='headings')
+        for col in results.columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=80)
+
+        tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        for _, row in results.iterrows():
+            tree.insert('', 'end', values=list(row))
+
+        def on_select(event):
+            selected_item = tree.selection()[0]
+            selected_medication = tree.item(selected_item)['values']
+            choice_window.destroy()
+            callback(pd.Series(dict(zip(results.columns, selected_medication))))
+
+        tree.bind('<<TreeviewSelect>>', on_select)
 
     def display_medication_info(self, medication):
         self.result_text.delete(1.0, tk.END)
         
-        fields = ['Category', 'Dosage Form', 'Strength', 'Manufacturer', 'Indication', 'Classification']
+        fields = ['Name', 'Category', 'Dosage Form', 'Strength', 'Manufacturer', 'Indication', 'Classification']
         
         self.result_text.insert(tk.END, f"Information for {medication['Name']}:\n\n", "bold")
         
@@ -160,12 +180,12 @@ class MedicationApp:
             messagebox.showerror("Error", "Please enter a medication name.")
             return
 
-        result = self.df[self.df['Name'].str.lower() == medication_name.lower()]
+        results = self.df[self.df['Name'].str.lower() == medication_name.lower()]
         
-        if result.empty:
+        if results.empty:
             messagebox.showerror("Error", f"No medication found with the name '{medication_name}'.")
         else:
-            self.display_modify_form(result.iloc[0])
+            self.show_medication_choices(results, self.display_modify_form)
 
     def display_modify_form(self, medication):
         for widget in self.modify_result_frame.winfo_children():
@@ -186,7 +206,7 @@ class MedicationApp:
 
     def save_changes(self, index):
         updated_medication = {field: entry.get().strip() for field, entry in self.modify_entries.items()}
-        self.df.loc[index] = updated_medication
+        self.df.loc[self.df['Name'] == updated_medication['Name']] = updated_medication
         self.df.to_csv(self.csv_path, index=False)
         self.update_treeview()
         messagebox.showinfo("Success", f"Updated {updated_medication['Name']} in the database.")
